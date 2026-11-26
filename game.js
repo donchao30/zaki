@@ -78,6 +78,8 @@ const UNIV = {
   // royaume d'or : ciel doré
   // forêt enchantée la nuit : ciel bleu nuit, lune, lucioles
   nuit:     { cl: 0x4a5090, gd: [0x2f7a5a, 0x3a2a6a, 0x2a1a50], items: ['champignon', 'arbre', 'champignon', 'cadeau', 'champignon', 'arbre'], sky: [0x050828, 0x16246a, 0x5a3a96, 0x0a0f30], fog: 0x3a3a86, fn: 55, ff: 200, hemi: [0x9aaeff, 0x3a1a5a, 0.8], sun: [0xc8d8ff, 0.7], rim: [0xff7ad8, 0.4] },
+  // atelier enneigé du Père Glouton : ciel d'hiver clair, neige
+  atelier:  { cl: 0xffffff, gd: [0xf4fbff, 0x8fb0d8, 0x6a8ab8], items: ['arbre', 'cadeau', 'arbre', 'cadeau', 'arbre', 'cadeau'], sky: [0x2f6fe8, 0x7fbcff, 0xdcefff, 0x9cc8ee], fog: 0xc8e2ff, fn: 70, ff: 220, hemi: [0xffffff, 0x8fb0d8, 0.78], sun: [0xfff4e0, 0.85], rim: [0x9fd8ff, 0.35] },
   couronne: { cl: 0xfff2c8, gd: [0xffe066, 0xe0a020, 0xb07a10], items: ['tour', 'cadeau', 'arbre', 'tour', 'cadeau', 'palmier'], sky: [0xff9a00, 0xffc94a, 0xfff0b0, 0xffb040], fog: 0xffe08a, fn: 70, ff: 220, hemi: [0xfff4d0, 0xc07a20, 0.66], sun: [0xffe2a0, 0.8], rim: [0xffd23f, 0.28] }
 };
 let UKEY = 'def';
@@ -372,7 +374,8 @@ const ROLL = {
   ballonplage: { s: 2.1 },
   donut: { s: 2.35, ry: -Math.PI / 2 + 0.6 },
   piece: { s: 2.35, ry: Math.PI / 2 - 0.6 },
-  tonneau: { s: 2.25, rz: Math.PI / 2 }
+  tonneau: { s: 2.25, rz: Math.PI / 2 },
+  cadeau: { s: 2.0 }
 };
 const rollTpl = {};
 function rollPrep(kind) {
@@ -606,6 +609,12 @@ const MAPS = {
       return wander(r, -4.5, 4.5);
     },
     noJump: z => (z > 37 && z < 58) || (z > 90 && z < 99)
+  },
+  atelier: {
+    name: "L'Atelier du Père Glouton", type: 'race', time: 180, tag: 'Course', col: '#e23b3b', img: 'img/atelier3d.jpg', roll: 'cadeau', tick: atelierTick, hit: atelierHit,
+    build() { atelierBuild(this); },
+    botX(r) { return atelierBot(this, r); },
+    noJump: z => z > 191 && z < 200
   },
   hexa: {
     name: 'Hexa Chute', type: 'survival', time: 120, tag: 'Survie', col: '#9b4dff', glb: 'maps/hexa.glb', img: 'img/hexa3d.jpg', roll: 'meteorite', meteors: true, hide: /^(CLD\d+_|ISL\d+_)/,
@@ -902,7 +911,98 @@ function mushroomDisc(x, z, r, top, c) {
   const stem = new T.Mesh(new T.CylinderGeometry(r * 0.28, r * 0.36, 9, 16), GM(0xf4e8d0, 0.25)); stem.position.y = -5; g.add(stem);
   return p;
 }
-const RACES = ['toboggan', 'marteaux', 'bonbon', 'nuit'];
+/* ---- L'Atelier du Père Glouton : tapis roulants, canons à cadeaux, pont de glace, presses à emballer, saut dans la hotte ---- */
+const ATL_LANES = [-4, 0, 4];
+const atlLift = u => { u = ((u % 3) + 3) % 3; return u < 0.7 ? 0.15 : u < 1.7 ? 0.15 + 3.05 * (u - 0.7) : u < 2.7 ? 3.2 : 3.2 - 3.05 * (u - 2.7) / 0.3; };
+let atlChevGeo = null;
+function atlConveyor(x0, x1, z0, z1, top, conv, col, rail) {
+  const p = plat(x0, x1, z0, z1, top, col || 0x4a4f6a, { rail: !!rail }); p.conv = conv;
+  if (!atlChevGeo) { const s = new T.Shape(); s.moveTo(-0.7, 0); s.lineTo(0, 0.55); s.lineTo(0.7, 0); s.lineTo(0.7, -0.3); s.lineTo(0, 0.25); s.lineTo(-0.7, -0.3); s.closePath(); atlChevGeo = new T.ShapeGeometry(s); }
+  const mat = GM(conv > 0 ? 0x8aff4a : 0xffd23f, 0.7), list = [], cx = (x0 + x1) / 2, cols = x1 - x0 > 6 ? [cx - 3, cx, cx + 3] : [cx];
+  for (let z = 0; z < z1 - z0 - 0.6; z += 2.5) cols.forEach(x => { const m = new T.Mesh(atlChevGeo, mat); m.rotation.x = -Math.PI / 2; if (conv < 0) m.rotation.z = Math.PI; m.position.set(x, top + 0.02, z0 + z); world.add(m); list.push({ m, z }); });
+  p.chev = list; return p;
+}
+function atlPress(x, z, top, ph, c) {
+  const g = new T.Group(); world.add(g);
+  const bx = rbox(3.2, 2.2, 2.4, 0.18, PM(c, 70)); bx.position.y = 1.1; g.add(bx);
+  const rb1 = new T.Mesh(new T.BoxGeometry(3.26, 2.26, 0.4), PM(0xffd23f, 90)); rb1.position.y = 1.1; g.add(rb1);
+  const rb2 = new T.Mesh(new T.BoxGeometry(0.4, 2.26, 2.46), PM(0xffd23f, 90)); rb2.position.y = 1.1; g.add(rb2);
+  const bow = new T.Mesh(new T.TorusGeometry(0.45, 0.16, 8, 18), PM(0xffd23f, 90)); bow.position.y = 2.4; g.add(bow);
+  const rod = new T.Mesh(new T.CylinderGeometry(0.22, 0.22, 7, 10), PM(0x8a8fa8, 90)); rod.position.y = 5.6; g.add(rod);
+  g.position.set(x, top + 3.2, z);
+  return { x, z, top, ph, g, lift: 3.2 };
+}
+function atelierBuild(M) {
+  M.presses = []; M.convs = [];
+  plat(-6, 6, -9, 14, 0, 0xd6e8ff, { rail: true });
+  // 1. tapis roulants : les côtés reculent, le milieu avance (mais deux barres tournent au milieu)
+  M.convs.push(atlConveyor(-6, -2, 14, 56, 0, -1.7), atlConveyor(-2, 2, 14, 56, 0, 2.2, 0x3a6a4a), atlConveyor(2, 6, 14, 56, 0, -1.7)); [-6, 6].forEach(x => box(0.3, 0.35, 42, 0xffd23f, x, 0.12, 35));
+  sweeper(28, 1.5, 0, 5.8); sweeper(44, -1.7, 0, 5.8);
+  // 2. canons à cadeaux : les paquets dévalent la piste
+  plat(-6, 6, 56, 104, 0, 0xd6e8ff, { rail: true }); ballZone(103, 57, -4.8, 4.8, 1.1);
+  // 3. pont de glace (on glisse !) avec deux barres qui tournent
+  plat(-6, 6, 104, 109, 0, 0xd6e8ff, { rail: true });
+  const ice = plat(-3.6, 3.6, 109, 149, 0, 0x9fe4ff); ice.ice = true; if (ice.mesh) { ice.mesh.material = new T.MeshPhongMaterial({ color: new T.Color(0x9fe4ff).convertSRGBToLinear(), emissive: new T.Color(0x2a6a8a).convertSRGBToLinear(), shininess: 140, specular: 0xffffff, transparent: true, opacity: 0.92 }); }
+  sweeper(124, 1.0, 0, 3.8); sweeper(140, -0.85, 0, 3.8);
+  // 4. presses à emballer : trois couloirs, rythmes décalés
+  plat(-6, 6, 149, 196, 0, 0xd6e8ff, { rail: true });
+  M.rows = [160, 169, 178, 187];
+  M.rows.forEach((z, i) => ATL_LANES.forEach((x, j) => M.presses.push(atlPress(x, z, 0, i * 1.0 + j * 1.0, [0xe23b3b, 0x2ea84a, 0x3f7bff][(i + j) % 3]))));
+  // 5. cheminées-trampolines vers l'étage
+  ATL_LANES.forEach(x => plat(x - 1.3, x + 1.3, 196, 198.5, 0.2, 0xe23b3b, { kind: 'pad' }));
+  plat(-6, 6, 201, 210, 3, 0xd6e8ff, { rail: true });
+  // 6. dernier tapis qui recule + cadeaux qui roulent
+  M.convs.push(atlConveyor(-6, 6, 210, 252, 3, -1.6, 0, true)); ballZone(251, 211, -4.8, 4.8, 1.5, 3);
+  // 7. fin : on saute dans la hotte géante
+  plat(-6, 6, 252, 261, 3, 0xd6e8ff, { rail: true });
+  plat(-6, 6, 261, 264, 4.2, 0xffffff, { rail: true });
+  plat(-5, 5, 264, 276, 2.4, 0xb3202a, { rail: true });
+  finishZ = 265.5;
+  if (VIS) atlSack(270, 2.4);
+  caneArch(264.6, 4.2);
+  cp(-6); cp(15); cp(57); cp(105, -1, 1); cp(150); cp(202, -3, 3, 3); cp(253, -3, 3, 3);
+  if (VIS) for (const p of plats) { // relief : socles de glace sous la piste, congères sur les bords
+    if (p.hex || p.kind === 'pad' || p.mov) continue;
+    const w = p.x1 - p.x0, d = p.z1 - p.z0, u = new T.Mesh(new T.BoxGeometry(w - 0.4, 2.6, d - 0.4), PM(p.ice ? 0x5aa8e0 : 0x8fb8e8, 30)); u.position.set((p.x0 + p.x1) / 2, p.top - 2.3, (p.z0 + p.z1) / 2); world.add(u);
+    const t = new T.Mesh(new T.ConeGeometry(Math.min(w, d) * 0.35, 3.2, 6), PM(0x6a9ad0, 30)); t.rotation.x = Math.PI; t.position.set((p.x0 + p.x1) / 2, p.top - 5.2, (p.z0 + p.z1) / 2); world.add(t);
+  }
+}
+function atlSack(z, top) { // hotte géante : sac rouge ouvert, bord de fourrure, corde dorée
+  const s = new T.Mesh(new T.CylinderGeometry(6.4, 5.4, 6, 28, 1, true), new T.MeshPhongMaterial({ color: new T.Color(0xc8202e).convertSRGBToLinear(), shininess: 30, side: T.DoubleSide })); s.position.set(0, top - 1.2, z); world.add(s);
+  const fur = new T.Mesh(new T.TorusGeometry(6.4, 0.55, 10, 36), PM(0xffffff, 10)); fur.rotation.x = Math.PI / 2; fur.position.set(0, top + 1.8, z); world.add(fur);
+  const rope = new T.Mesh(new T.TorusGeometry(6.1, 0.16, 8, 36), PM(0xffd23f, 90)); rope.rotation.x = Math.PI / 2; rope.position.set(0, top + 0.9, z); world.add(rope);
+  const bot = new T.Mesh(new T.CircleGeometry(5.4, 28), PM(0x7a1018)); bot.rotation.x = -Math.PI / 2; bot.position.set(0, top - 4.1, z); world.add(bot);
+}
+function atelierTick() {
+  const M = MAP; if (!M || !M.presses) return;
+  for (const q of M.presses) { q.lift = atlLift(time * 1.0 + q.ph); q.g.position.y = q.top + q.lift; }
+  for (const p of M.convs) if (p.chev) { const L = Math.floor((p.z1 - p.z0 - 0.6) / 2.5 + 1) * 2.5; for (const c of p.chev) { const z = ((c.z + p.conv * time) % L + L) % L; c.m.position.z = p.z0 + 0.3 + z; c.m.visible = z < p.z1 - p.z0 - 0.6; } }
+}
+function atelierHit(r) {
+  const M = MAP; if (!M || !M.presses || r.inv > 0) return;
+  for (const q of M.presses) {
+    if (q.lift > 1.5 || Math.abs(r.pos.x - q.x) > 1.9 || Math.abs(r.pos.z - q.z) > 1.55 || Math.abs(r.pos.y - q.top) > 1.2) continue;
+    r.pos.z = q.z - 1.6; r.vel.set((Math.sign(r.pos.x - q.x) || 1) * 2, 5, -8); r.stun = 0.7; r.inv = 0.6; r.grounded = false;
+    if (r === me) { buzz(35); sfx('punch'); }
+    return;
+  }
+}
+function atelierBot(M, r) {
+  const z = r.pos.z;
+  if (z > 10 && z < 56) return r.react > 0.55 ? 0 : (r.skill > 0.905 ? 4 : -4);
+  if (z >= 100 && z < 150) return 0;
+  if (z >= 152 && z < 190) {
+    const rows = M.rows, rz = rows.find(v => v + 1.6 > z); if (rz == null) return wander(r, -4, 4);
+    const eta = Math.max(0, (rz - 1.6 - z) / 5.6), ok = ATL_LANES.filter(x => { const t = time + eta, ph = M.presses.find(q => q.z === rz && q.x === x).ph; return atlLift(t + ph) > 1.9 && atlLift(t + ph + 0.7) > 1.9; });
+    if (ok.length) return nearest(ok, r.pos.x);
+    if (rz - z < 3.6 && r.grounded) { r.extHold = true; r.holdZ = rz - 4; }
+    return nearest(ATL_LANES, r.tx);
+  }
+  if (z >= 190 && z < 200) return nearest(ATL_LANES, r.tx) + (r.miss ? 1.8 : 0);
+  if (z >= 250) return 0;
+  return wander(r, -4, 4);
+}
+const RACES = ['toboggan', 'marteaux', 'bonbon', 'nuit', 'atelier'];
 /* ---- objets 3D Higgsfield (props) : remplacent les formes simples du décor ---- */
 const PROP_HIDE = /^(CLD\d+_|ISL\d+_|ISN\d+_|BLP_|DEC_donut|DEC_spr\d|DEC_l(stick|pop|sw)\d|DEC_gum\d|ENV_pad\d|ENV_bear)/;
 const PROP_FIX = { donut: [Math.PI / 2, 0, 0], sucette: [Math.PI / 2, 0, 0] };
@@ -1110,6 +1210,13 @@ function endDeco(w) { // décor de fin propre à chaque map
   }
 }
 const MAP_PROPS = {
+  atelier(w) {
+    startDeco(w, 11, 6); finishDeco(w, 270, 3.2, 7);
+    propIslands(-10, 285, 71, w); prop('dirigeable', -28, 18, 90, 7, -0.6, w); hotAir(w, 27, 16, 60, 7); hotAir(w, -26, 20, 170, 8);
+    [[-1, 30], [1, 80], [-1, 130], [1, 175], [-1, 230]].forEach(([s, z], i) => { const g = garden(w, s * 12.5, z, 7, 7, -2.6 + (z > 200 ? 3 : 0)); onGarden(g, 'arbre', 0, -1, 6 + (i % 2), i); onGarden(g, 'cadeau', s * -1.8, 2, 1.7, i); onGarden(g, 'ourson', s * 1.6, 2.4, 2.4, s * 0.5); });
+    [[-7.4, 104], [7.4, 104]].forEach(([x, z]) => prop('canon', x, 0, z, 2.6, x < 0 ? -0.5 : 0.5, w));
+    [[-7.6, 194], [7.6, 194]].forEach(([x, z]) => prop('cadeau', x, -0.4, z, 2.4, 0.3, w));
+  },
   nuit(w) {
     startDeco(w, 11, 6); endDeco(w);
     sideGardens(w, [[-1, 20], [1, 30], [-1, 50], [1, 46], [-1, 76], [1, 86], [-1, 112], [1, 124], [-1, 140]], 6);
@@ -1192,6 +1299,14 @@ const UDECO = {
     const fg = new T.BufferGeometry(); fg.setAttribute('position', new T.BufferAttribute(fp, 3));
     const ff = new T.Points(fg, new T.PointsMaterial({ color: 0xd8ff6a, size: 0.35, transparent: true, opacity: 0.9, depthWrite: false })); w.add(ff);
     floaters.push({ o: ff, by: 0, amp: 0.6, sp: 0.7, ph: 0, sway: 0.01 });
+  },
+  atelier(w) { // neige au sol, flocons qui tombent doucement
+    const snow = new T.Mesh(new T.PlaneGeometry(900, 900), new T.MeshLambertMaterial({ color: new T.Color(0x7fb2e0).convertSRGBToLinear() })); snow.rotation.x = -Math.PI / 2; snow.position.set(0, -16, 110); w.add(snow);
+    const n = 500, pos = new Float32Array(n * 3), R = rng(17);
+    for (let i = 0; i < n; i++) { pos[i * 3] = (R() - 0.5) * 70; pos[i * 3 + 1] = -4 + R() * 26; pos[i * 3 + 2] = -20 + R() * 310; }
+    const g = new T.BufferGeometry(); g.setAttribute('position', new T.BufferAttribute(pos, 3));
+    const fl = new T.Points(g, new T.PointsMaterial({ color: 0xffffff, size: 0.28, transparent: true, opacity: 0.9, depthWrite: false })); w.add(fl);
+    floaters.push({ o: fl, by: 0, amp: 1.2, sp: 0.35, ph: 0, sway: 0.01 });
   },
   couronne(w) { // pièces d'or géantes qui tournent dans le ciel
     const R = rng(4);
@@ -1446,8 +1561,9 @@ function step(r, inp, dt) {
   if (r.out) return;
   if (inp.punch) doPunch(r);
   if (r.gp && r.gp.mov && r.grounded) r.pos.x += r.gp.vx * dt;
+  if (r.gp && r.gp.conv && r.grounded) r.pos.z += r.gp.conv * dt;
   const sp = (MAP.type === 'survival' ? 4.3 : 6.4) * r.skill;
-  let c = r.stun > 0 ? 0.08 : (r.grounded ? 1 : 0.55); if (r.dive > 0) c = 0.05;
+  let c = r.stun > 0 ? 0.08 : (r.grounded ? (r.gp && r.gp.ice ? 0.4 : 1) : 0.55); if (r.dive > 0) c = 0.05;
   const k = Math.min(1, 12 * c * dt);
   r.vel.x += (inp.x * sp - r.vel.x) * k; r.vel.z += (inp.z * sp - r.vel.z) * k;
   if (inp.jump && (r.grounded || (r.airT || 0) < 0.15) && r.vel.y <= 0.5 && r.stun <= 0) { r.vel.y = 8.6; r.grounded = false; r.airT = 1; r.jumped = true; r.taps = 1; }
@@ -1496,6 +1612,7 @@ function step(r, inp, dt) {
       }
     }
   }
+  if (MAP.hit) MAP.hit(r);
   if (MAP.type === 'survival') { if (r.pos.y < -28) { r.out = true; outList.push(r); r.mesh.visible = false; if (r === me) { bannerShow('ÉLIMINÉ', 'tu regardes les autres', 2000); sfx('lose'); } } }
   else if (r.pos.y < -9 + (cps[r.cpi] ? cps[r.cpi].y : 0)) { // on suit la chute un moment avant de réapparaître
     r.fallT = (r.fallT == null ? 1.1 : r.fallT) - dt; if (r.fallT <= 0) { r.fallT = null; respawn(r); }
@@ -1731,7 +1848,7 @@ function buildGrid() {
   g.scrollTop = keep;
   $('chName').textContent = CHARS[chPick][0]; $('chCls').textContent = CHARS[chPick][3];
 }
-const MAP_ORDER = ['toboggan', 'marteaux', 'hexa', 'nuit', 'bonbon', 'couronne'];
+const MAP_ORDER = ['toboggan', 'marteaux', 'hexa', 'nuit', 'bonbon', 'atelier', 'couronne'];
 let mapSel = 0;
 function buildMaps() {
   for (let k = 0; k < 5; k++) {
@@ -2411,6 +2528,7 @@ const lerpAngle = (a, b, k) => { const d = ((b - a + Math.PI) % (2 * Math.PI) + 
 const camT = new T.Vector3(), look = new T.Vector3();
 let last = performance.now();
 function updateWorld(dt) {
+  if (MAP && MAP.tick) MAP.tick(dt);
   for (const s of sweepers) { s.a = s.a0 + s.w * time; s.piv.rotation.y = s.a; }
   for (const b of blocks) {
     if (b.hitT > 0) { b.hitT -= dt; const k = Math.sin((0.45 - b.hitT) / 0.45 * Math.PI * 3) * Math.max(0, b.hitT) * 0.5; b.m.scale.set(1 + k, 1 - k, 1 + k); b.m.position.y = b.y * k; } else if (b.m.scale.y !== 1) { b.m.scale.set(1, 1, 1); b.m.position.y = 0; }
