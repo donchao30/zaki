@@ -1031,8 +1031,11 @@ function volcanBuild(M) {
     const ph = (i * 1.1 + j * 0.9) % 3, g = new T.Group(); g.position.set(x, 0, z); world.add(g);
     const ring = new T.Mesh(new T.TorusGeometry(1.15, 0.28, 8, 20), PM(0x3a2a34, 20)); ring.rotation.x = Math.PI / 2; ring.position.y = 0.1; g.add(ring);
     const hole = new T.Mesh(new T.CircleGeometry(1.0, 20), GM(0xff5a1a, 1)); hole.rotation.x = -Math.PI / 2; hole.position.y = 0.04; g.add(hole);
-    const col = new T.Mesh(new T.CylinderGeometry(0.75, 1.0, 1, 14, 1, true), new T.MeshBasicMaterial({ color: 0xffb040, transparent: true, opacity: 0.85 })); col.position.y = 0.5; g.add(col);
-    M.geys.push({ x, z, ph, col, row: i });
+    const col = new T.Group(); g.add(col); // jet de lave : enveloppe rouge, cœur jaune incandescent
+    const sk = new T.Mesh(new T.CylinderGeometry(0.6, 0.95, 1, 12, 1, true), new T.MeshBasicMaterial({ color: 0xff2a00, transparent: true, opacity: 0.92, fog: false })); sk.position.y = 0.5; col.add(sk);
+    const core = new T.Mesh(new T.CylinderGeometry(0.3, 0.5, 1, 10, 1, true), new T.MeshBasicMaterial({ color: 0xffd23f, fog: false })); core.position.y = 0.5; col.add(core);
+    const drops = []; for (let k = 0; k < 4; k++) { const d = new T.Mesh(new T.SphereGeometry(0.28 - k * 0.03, 8, 6), new T.MeshBasicMaterial({ color: k % 2 ? 0xff4a0a : 0xffb020, fog: false })); d.visible = false; g.add(d); drops.push(d); }
+    M.geys.push({ x, z, ph, col, drops, row: i });
   }));
   for (let k = 0; k < 10; k++) plat(-4.5, 4.5, 150 + k * 3, 153 + k * 3, 0.3 * (k + 1), [0x7a5a6a, 0x6e5060][k % 2], { rail: true }); // 3. montée du cratère
   plat(-3, 3, 180, 250, 3, 0x6a4a5a, { rail: true }); ballZone(249, 181, -2.4, 2.4, 0.6, 3); // 4. crête : rochers de lave qui dévalent
@@ -1056,7 +1059,7 @@ function vlcArch(z, top) { // bouche du volcan : deux cônes de roche, anneau de
 function volcanTick() {
   const M = MAP; if (!M || !M.verts) return;
   for (const p of M.verts) { p.top = p.vert.base + 0.6 * (1 - Math.cos(time * 1.4 + p.vert.ph)); if (p.mesh) p.mesh.position.y = p.top - 0.5; }
-  for (const g of M.geys) { const u = vlcGey(time + g.ph), h = u > 1.9 && u < 2.9 ? 6 : u > 1.3 && u <= 1.9 ? 0.3 + 0.25 * Math.sin(time * 30) : 0.05; g.col.scale.y = h; g.col.position.y = h / 2; }
+  for (const g of M.geys) { const u = vlcGey(time + g.ph), h = u > 1.9 && u < 2.9 ? 6 : u > 1.3 && u <= 1.9 ? 0.3 + 0.25 * Math.sin(time * 30) : 0.05; g.col.scale.y = h; for (let k = 0; k < g.drops.length; k++) { const d = g.drops[k], on = h > 1, f = ((time * 1.3 + k * 0.25) % 1); d.visible = on || h > 0.2; if (d.visible) { const a = k * 1.7 + g.ph, hy = on ? 6.5 * Math.sin(f * Math.PI) + 0.3 : 0.25 + 0.2 * Math.abs(Math.sin(time * 9 + k)); d.position.set(Math.cos(a) * (on ? 0.6 + f * 1.2 : 0.5), hy, Math.sin(a) * (on ? 0.6 + f * 1.2 : 0.5)); } } }
 }
 function volcanHit(r) {
   const M = MAP; if (!M || !M.geys || r.inv > 0) return;
