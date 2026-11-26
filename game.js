@@ -221,14 +221,33 @@ let meteorT = 0;
 let blinks = [], BKEY = '';
 let world = null, plats = [], sweepers = [], blocks = [], movers = [], spawners = [], balls = [], cps = [], finishZ = null, crown = null, hexes = [];
 // la couronne se pose sur la tête du gagnant (et le suit jusqu'au podium)
-function crownOnHead(r) {
+function crownOnHead(r) { // la couronne s'envole et vient se poser sur la tête du gagnant
+  if (!crown || crown.head || crown.fly) return;
+  const tgt = r.look || r.inner; tgt.updateMatrixWorld(true);
+  const bb = new T.Box3().setFromObject(tgt);
+  crown.fly = { r, t: 0, from: crown.g.getWorldPosition(new T.Vector3()), s0: crown.g.getWorldScale(new T.Vector3()).y || 1, headY: bb.max.y - r.pos.y };
+  if (crown.g.parent !== world) { world.attach(crown.g); }
+  burst(r.pos.x, r.pos.y + 2, r.pos.z, 20); if (r === me) sfx('win');
+}
+function crownFly(dt) {
+  const F = crown.fly, r = F.r; F.t = Math.min(1, F.t + dt / (window.__crownDur || 1.1));
+  const t = F.t, e = 1 - Math.pow(1 - t, 3), s = F.s0 + (0.3 - F.s0) * e;
+  const hx = r.pos.x, hz = r.pos.z, hy = r.pos.y + F.headY - 0.12 + 0.9 * s;
+  const up = Math.max(F.from.y, hy) + 2.2;
+  // monte au-dessus de sa tête, tourne, puis descend doucement et se pose
+  const k = Math.min(1, t / 0.55), y = t < 0.55 ? F.from.y + (up - F.from.y) * Math.sin(k * Math.PI / 2) : up + (hy - up) * (1 - Math.cos((t - 0.55) / 0.45 * Math.PI / 2));
+  crown.g.position.set(F.from.x + (hx - F.from.x) * Math.min(1, t / 0.55), y, F.from.z + (hz - F.from.z) * Math.min(1, t / 0.55));
+  crown.g.scale.setScalar(s); crown.g.rotation.set(0, (1 - e) * 9, 0);
+  if (t >= 1) { crown.fly = null; crownAttach(r); r.squashT = 0.3; }
+}
+function crownAttach(r) {
   if (!crown || crown.head) return;
   const tgt = r.look || r.inner; tgt.updateMatrixWorld(true);
   const bb = new T.Box3().setFromObject(tgt), ws = tgt.getWorldScale(new T.Vector3()).y || 1;
   const top = tgt.worldToLocal(new T.Vector3(r.pos.x, bb.max.y, r.pos.z)), k = 0.3 / ws;
   if (crown.g.parent) crown.g.parent.remove(crown.g);
   crown.g.position.set(top.x, top.y - 0.12 / ws + 0.9 * k, top.z); crown.g.rotation.set(0, 0, 0); crown.g.scale.setScalar(k);
-  tgt.add(crown.g); crown.head = true; burst(r.pos.x, r.pos.y + 2, r.pos.z, 30);
+  tgt.add(crown.g); crown.head = true; burst(r.pos.x, r.pos.y + 2.2, r.pos.z, 30);
 }
 function clearWorld() {
   if (EL) { EL = null; show('elimTag', false); }
@@ -737,7 +756,7 @@ function extToboggan(M, S) {
   finishZ = S + 100; waveArch(S + 100, -2.4);
   parasol(-4.6, -2.4, S + 104, 0xff4fa6); parasol(4.6, -2.4, S + 106, 0x2ee6ff);
   cp(S + 1); cp(S + 28, -3, 3); cp(S + 58, -2.6, -0.6, -2.4); cp(S + 81.5, -3, 3, -2.4);
-  M.ext = { S, end: S + 110, bot(r) {
+  M.ext = { S, finTop: -2.4, end: S + 110, bot(r) {
     const z = r.pos.z;
     if (z < S + 27) return moverBot(r, rafts, S + 6);
     if (z > S + 55 && z < S + 80.5) { const sg = zig.find(q => z + 1.5 < q[1]) || zig[3]; return sg[2]; }
@@ -756,7 +775,7 @@ function extMarteaux(M, S) {
   P(-6, 6, S + 78.5, S + 110, 4, { rail: true }); sweeper(S + 87, 2.0, 4); ballZone(S + 97, S + 90, -4.8, 4.8, 2.2, 4);
   finishZ = S + 100; castleArch(S + 100, 4);
   cp(S + 1, -1.5, 1.5); cp(S + 29); cp(S + 61.5, -2.5, 2.5, 4); cp(S + 79, -3, 3, 4);
-  M.ext = { S, end: S + 110, bot(r) {
+  M.ext = { S, finTop: 4, end: S + 110, bot(r) {
     const z = r.pos.z;
     if (z < S + 28) return wander(r, -0.8, 0.8);
     if (z > S + 62 && z < S + 78.5) return moverBot(r, bridge, S + 64.5);
@@ -777,7 +796,7 @@ function extBonbon(M, S) {
   block(S + 80, 0, 3.2, 1.5, 0, { c: 0xfff3f8 }); block(S + 87, 0, 3.2, 1.8, 2, { c: 0xfff3f8 }); ballZone(S + 97, S + 89, -4.8, 4.8, 1.6);
   finishZ = S + 100; caneArch(S + 100, 0);
   cp(S - 4); cp(S + 37); cp(S + 73);
-  M.ext = { S, end: S + 110, bot(r) {
+  M.ext = { S, finTop: 0, end: S + 110, bot(r) {
     const z = r.pos.z;
     if (z < S + 36) { const n = pops.find(q => q.z > z + 0.8); return n ? n.x : 0; }
     if (z > S + 42 && z < S + 72) return moverBot(r, bisc, S + 44);
@@ -797,7 +816,7 @@ function extNuit(M, S) {
   nplat(-6, 6, S + 84, S + 110, 3, { rail: true });
   finishZ = S + 100; portalArch(S + 100, 3);
   cp(S - 4); cp(S + 59.5); cp(S + 85, -3, 3, 3);
-  M.ext = { S, end: S + 110, bot(r) {
+  M.ext = { S, finTop: 3, end: S + 110, bot(r) {
     const z = r.pos.z;
     if (z < S + 26) {
       if (!r.grounded) return r.tx;
@@ -1483,7 +1502,7 @@ function step(r, inp, dt) {
   }
   r.stun -= dt; r.dive -= dt; r.inv -= dt; r.punch -= dt; r.pcd -= dt;
   if (state === 'play' && !r.done) {
-    if (MAP.type === 'race' && r.pos.z > finishZ && r.pos.y > (MAP.finY != null && MAP.type0 === 'final' ? MAP.finY : -1)) { r.done = true; qual.push(r); if (FINAL && !winner) { winner = r; crownOnHead(r); toast(r === me ? 'COURONNE !' : r.name + ' a la couronne'); } if (r.bot && Math.random() < 0.45) showEmote(r, ['👋', '👍', '🕺', '😂', '😎', '🏆'][(Math.random() * 6) | 0]); if (r === me) { bannerShow('QUALIFIÉ !', qual.length + (qual.length === 1 ? 'er' : 'e') + ' · tu regardes les autres', 2200); sfx('win'); buzz(60); } }
+    if (MAP.type === 'race' && r.pos.z > finishZ && r.pos.y > (MAP.finY != null && MAP.type0 === 'final' ? MAP.finY : MAP.ext ? MAP.ext.finTop - 1 : -1)) { r.done = true; qual.push(r); if (FINAL && !winner) { winner = r; crownOnHead(r); toast(r === me ? 'COURONNE !' : r.name + ' a la couronne'); } if (r.bot && Math.random() < 0.45) showEmote(r, ['👋', '👍', '🕺', '😂', '😎', '🏆'][(Math.random() * 6) | 0]); if (r === me) { bannerShow('QUALIFIÉ !', qual.length + (qual.length === 1 ? 'er' : 'e') + ' · tu regardes les autres', 2200); sfx('win'); buzz(60); } }
     if (MAP.type === 'final' && crown && !winner && Math.hypot(r.pos.x - crown.x, r.pos.y + 0.7 - crown.y, r.pos.z - crown.z) < 1.4) { winner = r; r.done = true; qual = [r]; crownOnHead(r); toast(r === me ? 'COURONNE !' : r.name + ' a la couronne'); }
   }
 }
@@ -2056,6 +2075,7 @@ function restoreVictoryLooks() {
   vicLooks = [];
 }
 function celebrate(passed, won, gain, xpGain) {
+  if (crown && crown.fly) { crown.fly.t = 1; crownFly(0); }
   const rest = field.filter(r => !passed.includes(r)).sort((a, b) => (b.pos.z + b.pos.y * 3) - (a.pos.z + a.pos.y * 3));
   const top = passed.concat(rest).slice(0, 3);
   restoreVictoryLooks();
@@ -2097,6 +2117,7 @@ function drawConfetti(dt) {
   for (const p of conf) { p.x += p.vx * dt; p.y += p.vy * dt; p.r += p.vr * dt; if (p.y > H + 10) { p.y = -10; p.x = Math.random() * W; } cctx.save(); cctx.translate(p.x, p.y); cctx.rotate(p.r); cctx.fillStyle = p.c; cctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h * Math.abs(Math.cos(p.r))); cctx.restore(); }
 }
 function showResult(passed, last) {
+  if (crown && crown.fly) { crown.fly.t = 1; crownFly(0); }
   state = 'result';
   const won = passed.includes(me);
   let gain = 0;
@@ -2323,7 +2344,7 @@ function remoteApply(r, dt) {
   if (r.grounded) { const gp = groundAt(r.pos.x, r.pos.z, r.pos.y + 0.05); if (gp && gp.hex && !gp.disc && gp.t < 0) gp.t = 2.5; }
   if (MAP.type === 'survival' && r.pos.y < -28) { r.out = true; outList.push(r); r.mesh.visible = false; return; }
   if (state === 'play' && !r.done) {
-    if (MAP.type === 'race' && r.pos.z > finishZ && r.pos.y > (MAP.finY != null && MAP.type0 === 'final' ? MAP.finY : -1)) { r.done = true; qual.push(r); if (FINAL && !winner) { winner = r; crownOnHead(r); } }
+    if (MAP.type === 'race' && r.pos.z > finishZ && r.pos.y > (MAP.finY != null && MAP.type0 === 'final' ? MAP.finY : MAP.ext ? MAP.ext.finTop - 1 : -1)) { r.done = true; qual.push(r); if (FINAL && !winner) { winner = r; crownOnHead(r); } }
     if (MAP.type === 'final' && crown && !winner && Math.hypot(r.pos.x - crown.x, r.pos.y + 0.7 - crown.y, r.pos.z - crown.z) < 1.4) { winner = r; r.done = true; qual = [r]; crownOnHead(r); toast(r.name + ' a la couronne'); }
   }
 }
@@ -2403,7 +2424,8 @@ function updateWorld(dt) {
     if (p.alive && p.t >= 0) { if (NET.role !== 'guest') p.t -= dt; else p.t = Math.max(0.05, p.t - dt); p.mesh.material = PM(Math.floor(p.t * 20) % 2 ? 0xffffff : p.c, 50); p.mesh.position.x = p.cx + (Math.random() - 0.5) * 0.12; p.mesh.position.z = p.cz + (Math.random() - 0.5) * 0.12; if (p.t <= 0 && NET.role !== 'guest') { p.alive = false; p.vy = 0; } }
     else if (!p.alive && p.mesh.visible) { p.vy -= 20 * dt; p.mesh.position.y += p.vy * dt; if (p.mesh.position.y < -40) p.mesh.visible = false; }
   }
-  if (crown && !crown.head) { crown.g.rotation.y += dt * 1.5; crown.g.position.y = crown.y + Math.sin(time * 2) * 0.15; }
+  if (crown && crown.fly) crownFly(dt);
+  else if (crown && !crown.head) { crown.g.rotation.y += dt * 1.5; crown.g.position.y = crown.y + Math.sin(time * 2) * 0.15; }
   if (state === 'play' && NET.role !== 'guest') for (const s of spawners) { s.t -= dt; if (s.t <= 0) { s.t = s.every; const b = rollMesh(); b.m.position.set(s.x0 + Math.random() * (s.x1 - s.x0), s.top + 1, s.zs); b.ze = s.ze; balls.push(b); } }
   if (state === 'play' && NET.role !== 'guest' && MAP.meteors) meteorTick(dt);
   if (NET.role !== 'guest') for (let i = balls.length - 1; i >= 0; i--) {
@@ -2513,5 +2535,5 @@ window.__zaki = { maskGen, voidScan(z0, z1) {
       if (miss / tot > 0.01) out.push({ x0: p.x0, x1: p.x1, z0: p.z0, z1: p.z1, top: p.top, pct: Math.round(miss / tot * 100), byX: p._mx, miss: [mx0, mx1, mz0, mz1].map(v => Math.round(v * 10) / 10) });
     }
     return out;
-  }, endTest() { qual = field.filter((r, i) => i % 2 === 0 || r === me).slice(0, target); qual.forEach(r => { r.done = true; }); clock = 0.01; }, flyT: () => FLY && FLY.t, elT: () => EL && EL.t, trailN: () => [trailPool.length, trailPool.filter(p => p.life > 0).length, !!trailOf(me), state, trailT.toFixed(3)].join(','), ff(sec) { count = 0.01; state = 'play'; countEl.textContent = ''; for (let i = 0; i < sec * 30; i++) { time += 1 / 30; updateWorld(1 / 30); } }, openPage, celebrate: (...a) => celebrate(...a), get state() { return state; }, get field() { return field; }, get qual() { return qual; }, get me() { return me; }, get clock() { return clock; }, get MAP() { return MAP; }, startGame, finishRound, beginCount, get winner() { return winner; }, get nextAction() { return nextAction; }, botInput, set meBot(v) { if (me) me.bot = v; }, setJoy(x, y) { joy.x = x; joy.y = y; }, jump() { jumpQ = true; } };
+  }, endTest() { qual = field.filter((r, i) => i % 2 === 0 || r === me).slice(0, target); qual.forEach(r => { r.done = true; }); clock = 0.01; }, flyT: () => FLY && FLY.t, elT: () => EL && EL.t, trailN: () => [trailPool.length, trailPool.filter(p => p.life > 0).length, !!trailOf(me), state, trailT.toFixed(3)].join(','), ff(sec) { count = 0.01; state = 'play'; countEl.textContent = ''; for (let i = 0; i < sec * 30; i++) { time += 1 / 30; updateWorld(1 / 30); } }, openPage, celebrate: (...a) => celebrate(...a), get state() { return state; }, get field() { return field; }, get qual() { return qual; }, get me() { return me; }, get clock() { return clock; }, get MAP() { return MAP; }, startGame, finishRound, beginCount, get winner() { return winner; }, get nextAction() { return nextAction; }, botInput, set meBot(v) { if (me) me.bot = v; }, setJoy(x, y) { joy.x = x; joy.y = y; }, jump() { jumpQ = true; }, finalRound(k) { tour = true; roundIdx = 2; setupRound(k); }, get crown() { return crown; } };
 }
