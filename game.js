@@ -1850,9 +1850,10 @@ function buildGrid() {
 }
 const MAP_ORDER = ['toboggan', 'marteaux', 'hexa', 'nuit', 'bonbon', 'atelier', 'couronne'];
 let mapSel = 0;
+const mapAt = i => MAP_ORDER[((i % MAP_ORDER.length) + MAP_ORDER.length) % MAP_ORDER.length]; // index toujours dans la liste, quel que soit le nombre de maps
 function buildMaps() {
   for (let k = 0; k < 5; k++) {
-    const key = MAP_ORDER[(mapSel + k - 2 + 60) % MAP_ORDER.length], m = MAPS[key], b = $('mslot' + k);
+    const key = mapAt(mapSel + k - 2), m = MAPS[key], b = $('mslot' + k);
     b.textContent = '';
     const im = document.createElement('img'); im.alt = ''; im.src = m.img || ('img/' + key + '.jpg');
     const n = document.createElement('b'); n.textContent = m.name;
@@ -1862,7 +1863,7 @@ function buildMaps() {
     sp.append(e1, e2); b.append(im, n, sp); b.setAttribute('aria-label', m.name);
   }
 }
-for (let k = 0; k < 5; k++) $('mslot' + k).addEventListener('click', () => { if (k === 2) { playSel(); return; } mapSel = (mapSel + k - 2 + 60) % MAP_ORDER.length; buildMaps(); sfx('tap'); });
+for (let k = 0; k < 5; k++) $('mslot' + k).addEventListener('click', () => { if (k === 2) { playSel(); return; } mapSel = MAP_ORDER.indexOf(mapAt(mapSel + k - 2)); buildMaps(); sfx('tap'); });
 function playSel() { const key = MAP_ORDER[mapSel]; sfx('tap'); if (NET.role === 'guest') { openPage('online'); return; } UI.open(null); startGame(false, key); }
 $('mapsPrev').addEventListener('click', () => { mapSel = (mapSel + MAP_ORDER.length - 1) % MAP_ORDER.length; buildMaps(); sfx('tap'); });
 $('mapsNext').addEventListener('click', () => { mapSel = (mapSel + 1) % MAP_ORDER.length; buildMaps(); sfx('tap'); });
