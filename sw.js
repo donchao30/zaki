@@ -1,5 +1,5 @@
 // Zaki service worker : code toujours frais (réseau d'abord), gros fichiers en cache (renouvelés à chaque version)
-const VERSION = 'zaki-20261126164618';
+const VERSION = 'zaki-20261126170132';
 const CORE = ['./', 'index.html', 'game.js', 'ui.js', 'manifest.json', 'lib/three.min.js', 'lib/gltfloader.js', 'lib/buffergeometryutils.js', 'lib/skeletonutils.js', 'lib/mqtt.min.js', 'fonts/lilita.woff2'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => Promise.all(CORE.map(f => c.add(new Request(f, { cache: 'reload' })).catch(() => { })))).then(() => self.skipWaiting()));

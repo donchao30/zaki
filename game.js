@@ -1200,6 +1200,17 @@ function emoUpdate(dt) {
 /* ---- traînées derrière le perso ---- */
 const trailPool = []; let trailT = 0;
 function trailOf(r) { const id = r === me ? myTrail : (NET.role === 'host' && r.remote) ? NET.peerTrail : (NET.role === 'guest' && r === runners[0]) ? NET.hostTrail : null; return id && id !== 'none' ? TRAILS.find(t => t.id === id) : null; }
+const trailGeo = {}; // vraie forme de chaque traînée : étoile, cœur, flocon, flamme, bulle
+function trailShape(id) {
+  if (trailGeo[id]) return trailGeo[id];
+  let g;
+  if (id === 'etoiles' || id === 'or') g = new T.ShapeGeometry(starShape(0.3, 0.13));
+  else if (id === 'coeurs') { const h = new T.Shape(); h.moveTo(0, -0.28); h.bezierCurveTo(-0.05, -0.2, -0.32, -0.05, -0.3, 0.1); h.bezierCurveTo(-0.28, 0.28, -0.05, 0.3, 0, 0.14); h.bezierCurveTo(0.05, 0.3, 0.28, 0.28, 0.3, 0.1); h.bezierCurveTo(0.32, -0.05, 0.05, -0.2, 0, -0.28); g = new T.ShapeGeometry(h, 8); }
+  else if (id === 'neige') { const f = new T.Shape(); for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2, rr = i % 2 ? 0.08 : 0.3; i ? f.lineTo(Math.cos(a) * rr, Math.sin(a) * rr) : f.moveTo(rr, 0); } g = new T.ShapeGeometry(f); }
+  else if (id === 'feu') { const f = new T.Shape(); f.moveTo(0, 0.34); f.quadraticCurveTo(0.26, 0.02, 0.16, -0.16); f.quadraticCurveTo(0, -0.3, -0.16, -0.16); f.quadraticCurveTo(-0.26, 0.02, 0, 0.34); g = new T.ShapeGeometry(f, 6); }
+  else g = new T.CircleGeometry(0.2, 12);
+  return (trailGeo[id] = g);
+}
 function trailUpdate(dt) {
   trailT -= dt;
   if (trailT <= 0 && (state === 'play' || state === 'count' || state === 'end')) {
@@ -1209,13 +1220,14 @@ function trailUpdate(dt) {
       const lp = r._tp || (r._tp = r.pos.clone()), mv = Math.hypot(r.pos.x - lp.x, r.pos.z - lp.z) + Math.abs(r.pos.y - lp.y); lp.copy(r.pos);
       if (mv < 0.04) continue;
       let p = trailPool.find(q => q.life <= 0);
-      if (!p) { if (trailPool.length > 140) continue; const m = new T.Mesh(new T.OctahedronGeometry(0.26, 0), new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false, fog: false })); p = { m, life: 0 }; trailPool.push(p); }
+      if (!p) { if (trailPool.length > 140) continue; const m = new T.Mesh(trailShape(t.id), new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false, fog: false, side: T.DoubleSide })); p = { m, life: 0 }; trailPool.push(p); }
       if (p.m.parent !== world) world.add(p.m);
-      p.m.material.color.setHex(t.c[(Math.random() * t.c.length) | 0]); p.life = 0.7; p.m.visible = true;
-      p.m.position.set(r.pos.x + (Math.random() - 0.5) * 0.7, r.pos.y + 0.25 + Math.random() * 0.9, r.pos.z + (Math.random() - 0.5) * 0.7);
+      p.m.geometry = trailShape(t.id); p.m.material.color.setHex(t.c[(Math.random() * t.c.length) | 0]); p.life = 0.7; p.m.visible = true; p.spin = (Math.random() - 0.5) * 6;
+      // part des pieds et traîne au sol, derrière le perso
+      const vl = Math.hypot(r.vel.x, r.vel.z) || 1; p.m.position.set(r.pos.x - r.vel.x / vl * 0.45 + (Math.random() - 0.5) * 0.5, r.pos.y + 0.12 + Math.random() * 0.2, r.pos.z - r.vel.z / vl * 0.45 + (Math.random() - 0.5) * 0.5);
     }
   }
-  for (const p of trailPool) { if (p.life <= 0) continue; p.life -= dt; p.m.material.opacity = Math.max(0, p.life / 0.7); p.m.scale.setScalar(0.4 + p.life); p.m.rotation.y += dt * 4; p.m.position.y += dt * 0.4; if (p.life <= 0) p.m.visible = false; }
+  for (const p of trailPool) { if (p.life <= 0) continue; p.life -= dt; p.m.material.opacity = Math.max(0, p.life / 0.7); p.m.scale.setScalar(0.5 + p.life * 0.8); p.m.quaternion.copy(cam.quaternion); p.m.rotateZ((p.spin || 0) * p.life); p.m.position.y += dt * 0.15; if (p.life <= 0) p.m.visible = false; }
 }
 function burst(x, y, z, n) {
   const cols = [0xffd23f, 0xff4fa6, 0x5fd6ff, 0x7bff8a, 0xb06cff, 0xffffff];
