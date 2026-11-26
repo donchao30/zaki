@@ -1431,7 +1431,7 @@ function step(r, inp, dt) {
   let c = r.stun > 0 ? 0.08 : (r.grounded ? 1 : 0.55); if (r.dive > 0) c = 0.05;
   const k = Math.min(1, 12 * c * dt);
   r.vel.x += (inp.x * sp - r.vel.x) * k; r.vel.z += (inp.z * sp - r.vel.z) * k;
-  if (inp.jump && r.grounded && r.stun <= 0) { r.vel.y = 8.6; r.grounded = false; }
+  if (inp.jump && (r.grounded || (r.airT || 0) < 0.15) && r.vel.y <= 0.5 && r.stun <= 0) { r.vel.y = 8.6; r.grounded = false; r.airT = 1; r.jumped = true; }
   if (inp.dive && r.dive <= 0 && r.stun <= 0) {
     // astuce : plonger en plein saut relance vers le haut et plus loin (permet de passer par-dessus un cube)
     const air = !r.grounded, hv = air ? 12.5 : 11;
@@ -1445,6 +1445,7 @@ function step(r, inp, dt) {
     if (g.kind === 'pad') { r.vel.y = 16.5; r.grounded = false; g.squash = 1; } else { r.vel.y = 0; r.grounded = true; }
     if (g.hex && !g.disc && g.t < 0) g.t = 2.5;
   } else r.grounded = false;
+  r.airT = r.grounded ? 0 : (r.airT || 0) + dt; if (r.grounded) r.jumped = false;
   if (r.gp && r.gp.rail && r.pos.y > r.gp.top - 0.5 && r.pos.z >= r.gp.z0 - 0.5 && r.pos.z <= r.gp.z1 + 0.5) r.pos.x = clamp(r.pos.x, r.gp.x0 + 0.45, r.gp.x1 - 0.45);
   if (r.grounded) for (let i = r.cpi + 1; i < cps.length; i++) if (r.pos.z >= cps[i].z && r.pos.y >= cps[i].y - 0.3) r.cpi = i;
   if (r.inv <= 0) {
@@ -1510,7 +1511,8 @@ joyZone.addEventListener('pointerup', joyEnd); joyZone.addEventListener('pointer
 let jumpQ = false, diveQ = false, punchQ = false;
 const bindBtn = (el, f) => { el.addEventListener('pointerdown', e => { e.preventDefault(); f(); el.classList.add('on'); }); ['pointerup', 'pointerleave', 'pointercancel'].forEach(n => el.addEventListener(n, () => el.classList.remove('on'))); };
 // Saut : 1 appui = sauter, 2e appui en l'air = plongeon
-bindBtn($('bJump'), () => { if (me && !me.grounded && me.dive <= 0) diveQ = true; else { jumpQ = true; sfx('jump'); } }); bindBtn($('bPunch'), () => { if (me && me.pcd <= 0) { sfx('punch'); buzz(30); } punchQ = true; });
+let lastJumpTap = -9;
+bindBtn($('bJump'), () => { const nw = performance.now() / 1000; if (me && !me.grounded && me.dive <= 0 && me.jumped && !jumpQ) { diveQ = true; me.jumped = false; } else { jumpQ = true; lastJumpTap = nw; sfx('jump'); } }); bindBtn($('bPunch'), () => { if (me && me.pcd <= 0) { sfx('punch'); buzz(30); } punchQ = true; });
 // swipe camera: drag anywhere on the 3D view to turn the camera around your character
 let camYaw = 0, camPitch = 0; const camDrag = { id: null, x: 0, y: 0, lastTap: 0 };
 {
