@@ -1347,7 +1347,7 @@ function barHit(s, x, z) {
 function respawn(r) {
   const c = cps[Math.min(r.cpi, cps.length - 1)] || { z: 0, x0: -2, x1: 2, y: 0 };
   const x = c.xs ? c.xs[(Math.random() * c.xs.length) | 0] : c.x0 + Math.random() * (c.x1 - c.x0);
-  r.fallT = null; r.pos.set(x, c.y + 2.5, c.z + 1.2); r.vel.set(0, 0, 0); r.stun = 0; r.dive = 0; r.inv = 1; r.yaw = 0; r.gp = null;
+  r.fallT = null; r.pos.set(x, c.y + 2.5, c.z + 1.2); r.vel.set(0, 0, 0); r.stun = 0; r.dive = 0; r.slam = false; r.taps = 0; r.inv = 1; r.yaw = 0; r.gp = null;
 }
 const PUNCH_PRICE = 1000;
 let hasPunch = store.get('punch', false);
@@ -1437,6 +1437,7 @@ function step(r, inp, dt) {
     const air = !r.grounded, hv = air ? 12.5 : 11;
     r.vel.x = Math.sin(r.yaw) * hv; r.vel.z = Math.cos(r.yaw) * hv; r.vel.y = air ? Math.max(r.vel.y, 0) + 4.2 : 4.5; r.grounded = false; r.dive = 0.75;
   }
+  if (inp.slam && !r.grounded && r.stun <= 0) { r.vel.x *= 0.12; r.vel.z *= 0.12; r.vel.y = -26; r.dive = 0.5; r.slam = true; }
   r.vel.y -= 24 * dt;
   r.pos.addScaledVector(r.vel, dt);
   const g = groundAt(r.pos.x, r.pos.z, r.pos.y);
@@ -1445,7 +1446,7 @@ function step(r, inp, dt) {
     if (g.kind === 'pad') { r.vel.y = 16.5; r.grounded = false; g.squash = 1; } else { r.vel.y = 0; r.grounded = true; }
     if (g.hex && !g.disc && g.t < 0) g.t = 2.5;
   } else r.grounded = false;
-  r.airT = r.grounded ? 0 : (r.airT || 0) + dt; if (r.grounded) { r.jumped = false; r.taps = 0; }
+  r.airT = r.grounded ? 0 : (r.airT || 0) + dt; if (r.grounded) { r.jumped = false; r.taps = 0; if (r.slam) { r.slam = false; r.dive = 0; burst(r.pos.x, r.pos.y + 0.2, r.pos.z, 12); if (r === me) buzz(25); } }
   if (r.gp && r.gp.rail && r.pos.y > r.gp.top - 0.5 && r.pos.z >= r.gp.z0 - 0.5 && r.pos.z <= r.gp.z1 + 0.5) r.pos.x = clamp(r.pos.x, r.gp.x0 + 0.45, r.gp.x1 - 0.45);
   if (r.grounded) for (let i = r.cpi + 1; i < cps.length; i++) if (r.pos.z >= cps[i].z && r.pos.y >= cps[i].y - 0.3) r.cpi = i;
   if (r.inv <= 0) {
@@ -1508,11 +1509,12 @@ joyZone.addEventListener('pointerdown', e => {
 joyZone.addEventListener('pointermove', e => { if (e.pointerId === joy.id) joyMove(e); });
 const joyEnd = e => { if (e.pointerId === joy.id) { joy.id = null; joy.x = 0; joy.y = 0; knob.style.transform = ''; joyHome(); } };
 joyZone.addEventListener('pointerup', joyEnd); joyZone.addEventListener('pointercancel', joyEnd);
-let jumpQ = false, diveQ = false, punchQ = false;
+let jumpQ = false, diveQ = false, punchQ = false, slamQ = false;
 const bindBtn = (el, f) => { el.addEventListener('pointerdown', e => { e.preventDefault(); f(); el.classList.add('on'); }); ['pointerup', 'pointerleave', 'pointercancel'].forEach(n => el.addEventListener(n, () => el.classList.remove('on'))); };
 // Saut : 1 appui = sauter, 2e appui en l'air = plongeon
 let lastJumpTap = -9;
-bindBtn($('bJump'), () => { const nw = performance.now() / 1000; if (me && !me.grounded && me.dive <= 0 && me.jumped && !jumpQ) { me.taps = (me.taps || 1) + 1; if (me.taps >= 3) { diveQ = true; me.jumped = false; me.taps = 0; } } else { jumpQ = true; lastJumpTap = nw; sfx('jump'); } }); bindBtn($('bPunch'), () => { if (me && me.pcd <= 0) { sfx('punch'); buzz(30); } punchQ = true; });
+bindBtn($('bJump'), () => { const nw = performance.now() / 1000; if (me && !me.grounded && me.jumped && !jumpQ && (me.taps || 1) === 1 && me.dive <= 0) { diveQ = true; me.taps = 2; }
+  else if (me && !me.grounded && me.jumped && me.taps === 2 && !diveQ) { slamQ = true; me.taps = 3; } else { jumpQ = true; lastJumpTap = nw; sfx('jump'); } }); bindBtn($('bPunch'), () => { if (me && me.pcd <= 0) { sfx('punch'); buzz(30); } punchQ = true; });
 // swipe camera: drag anywhere on the 3D view to turn the camera around your character
 let camYaw = 0, camPitch = 0; const camDrag = { id: null, x: 0, y: 0, lastTap: 0 };
 {
@@ -1540,7 +1542,7 @@ function playerInput() {
   if (keys.arrowup || keys.z || keys.w) y += 1; if (keys.arrowdown || keys.s) y -= 1;
   const m = Math.hypot(x, y); if (m > 1) { x /= m; y /= m; }
   const cy = Math.cos(camYaw), sy = Math.sin(camYaw);
-  const inp = { x: -x * cy + y * sy, z: x * sy + y * cy, jump: jumpQ, dive: diveQ, punch: punchQ }; jumpQ = diveQ = punchQ = false; return inp;
+  const inp = { x: -x * cy + y * sy, z: x * sy + y * cy, jump: jumpQ, dive: diveQ, punch: punchQ, slam: slamQ }; jumpQ = diveQ = punchQ = slamQ = false; return inp;
 }
 function playerInputRaw() {
   const i = playerInput();
@@ -2335,7 +2337,7 @@ function guestLocal(dt) {
     step(me, inp, dt);
     for (const o of field) { if (o === me || o.out) continue; const dx = me.pos.x - o.pos.x, dz = me.pos.z - o.pos.z, d = Math.hypot(dx, dz); if (d < 0.9 && d > 0.001 && Math.abs(me.pos.y - o.pos.y) < 1) { me.pos.x += dx / d * (0.9 - d); me.pos.z += dz / d * (0.9 - d); } }
     const hs = Math.hypot(me.vel.x, me.vel.z); if (hs > 0.6 && me.stun <= 0 && me.dive <= 0) me.yaw = lerpAngle(me.yaw, Math.atan2(me.vel.x, me.vel.z), 1 - Math.exp(-12 * dt));
-  } else { jumpQ = diveQ = punchQ = false; }
+  } else { jumpQ = diveQ = punchQ = slamQ = false; }
   if (NET.client && state !== 'result') {
     NET.sendT -= dt;
     if (NET.sendT <= 0) {
